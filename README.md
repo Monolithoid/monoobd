@@ -1,3 +1,10 @@
+<h1>
+  <img src="./assets/monoobd-icon.png" alt="" width="48" height="48" align="middle">
+  MonooBD
+</h1>
+
+![Une scène de BD en trois étapes, du croquis à l’encrage puis à la colorisation](./assets/monoobd-social.jpg)
+
 # MonooBD
 
 Outil personnel pour finir des planches de bande dessinée belge.  
