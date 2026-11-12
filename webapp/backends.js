@@ -195,7 +195,7 @@ const novelai = {
       legacy:                         false,
       legacy_uc:                      false,
       legacy_v3_extend:               false,
-      add_original_image:             true,
+      add_original_image:             false,
       prefer_brownian:                true,
       deliberate_euler_ancestral_bug: false,
       skip_cfg_above_sigma:           null,
@@ -205,11 +205,10 @@ const novelai = {
       reference_information_extracted_multiple: [],
       reference_strength_multiple:             [],
       normalize_reference_strength_multiple:   true,
-      // img2img
-      image:            resized,
-      strength,
-      noise:            0,
-      extra_noise_seed: seed,
+      // reference image (guide la génération sans img2img)
+      reference_image_multiple:                [resized],
+      reference_information_extracted_multiple: [1.0],
+      reference_strength_multiple:             [0.6],
     };
     if (isV4) {
       parameters.v4_prompt = {
@@ -232,7 +231,7 @@ const novelai = {
         Origin:         'https://novelai.net',
         Referer:        'https://novelai.net/',
       },
-      body: JSON.stringify({ input: prompt, model: NOVELAI_MODEL, action: 'img2img', parameters }),
+      body: JSON.stringify({ input: prompt, model: NOVELAI_MODEL, action: 'generate', parameters }),
       signal: AbortSignal.timeout(GEN_TIMEOUT),
     });
     if (!r.ok) throw await httpError('novelai', r);

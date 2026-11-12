@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from PIL import Image
 from diffusers import (
-    StableDiffusionControlNetImg2ImgPipeline,
+    StableDiffusionControlNetPipeline,
     ControlNetModel,
     UniPCMultistepScheduler,
 )
@@ -30,13 +30,13 @@ CN_LINEART  = "lllyasviel/control_v11p_sd15_lineart"
 _pipelines: dict = {}
 
 
-def get_pipeline(mode: str) -> StableDiffusionControlNetImg2ImgPipeline:
+def get_pipeline(mode: str) -> StableDiffusionControlNetPipeline:
     if mode not in _pipelines:
         log.info(f"Chargement pipeline {mode}…")
         cn_id = CN_SCRIBBLE if mode == "encrage" else CN_LINEART
         controlnet = ControlNetModel.from_pretrained(
             cn_id, torch_dtype=torch.float32, cache_dir=HF_CACHE)
-        pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
             SD_BASE,
             controlnet=controlnet,
             torch_dtype=torch.float32,
@@ -113,10 +113,8 @@ def generate(req: GenerateRequest):
             prompt=req.prompt,
             negative_prompt=req.negative_prompt,
             image=img,
-            control_image=img,
             num_inference_steps=req.steps,
             guidance_scale=req.cfg_scale,
-            strength=req.denoising_strength,
             generator=torch.Generator().manual_seed(42),
         ).images[0]
 
