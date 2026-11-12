@@ -456,6 +456,8 @@ header{background:#1e293b;padding:.875rem 1.5rem;display:flex;justify-content:sp
 .icon{color:#f97316}
 input[type=file]{display:none}
 .fname{font-size:.875rem;color:#fdba74;margin-top:.5rem;font-weight:500}
+.dz-thumb{display:none;max-width:160px;max-height:160px;margin:.75rem auto 0;border-radius:8px;border:1px solid #334155;background:#fff}
+.dz-thumb.show{display:block}
 .actions{display:flex;gap:.75rem;margin-top:1.25rem;justify-content:center;flex-wrap:wrap}
 .backend-row{display:flex;gap:.5rem;align-items:center;justify-content:center;margin-top:1rem;font-size:.875rem;color:#94a3b8}
 .backend-row select{background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:.4rem .75rem;font-size:.875rem;max-width:100%}
@@ -492,6 +494,10 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .history-grid{display:flex;gap:.625rem;flex-wrap:wrap}
 .hist-thumb{position:relative;border-radius:8px;overflow:hidden;border:2px solid #334155;cursor:pointer;transition:border-color .2s}
 .hist-thumb:hover{border-color:#f97316}
+.hist-thumb.sel{border-color:#f97316;box-shadow:0 0 0 2px rgba(249,115,22,.35)}
+.hist-reuse{position:absolute;top:0;left:0;right:0;background:rgba(249,115,22,.9);color:#fff;
+  font-size:.6rem;font-weight:600;padding:.15rem .3rem;text-align:center;opacity:0;transition:opacity .2s}
+.hist-thumb:hover .hist-reuse{opacity:1}
 .hist-thumb img{width:100px;height:100px;object-fit:cover;display:block;background:#334155}
 .hist-label{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.65);
   font-size:.6rem;color:#e2e8f0;padding:.2rem .3rem;text-align:center;line-height:1.2}
@@ -548,6 +554,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
     <p>Glisse ton croquis ici ou <strong>clique pour parcourir</strong></p>
     <p>PNG &bull; JPG &bull; WebP &mdash; redimensionn&eacute; &agrave; 768&thinsp;px max c&ocirc;t&eacute; serveur</p>
     <div class="fname" id="fname"></div>
+    <img class="dz-thumb" id="dzThumb" alt="Croquis s&eacute;lectionn&eacute;">
   </div>
 
   <!-- Prompt rendu -->
@@ -585,7 +592,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 
   <!-- Historique rendus du projet -->
   <div class="history" id="history">
-    <h3>Historique du projet</h3>
+    <h3>Historique du projet <span style="text-transform:none;letter-spacing:0;font-weight:400;color:#64748b">&mdash; clique sur un rendu pour repasser son croquis</span></h3>
     <div class="history-grid" id="histGrid"></div>
   </div>
 
@@ -603,6 +610,7 @@ var st   = document.getElementById('st');
 var imgOrig  = document.getElementById('imgOrig');
 var imgRes   = document.getElementById('imgRes');
 var fname    = document.getElementById('fname');
+var dzThumb  = document.getElementById('dzThumb');
 var resTitle = document.getElementById('resTitle');
 var projSel  = document.getElementById('projSel');
 var projPromptSection = document.getElementById('projPromptSection');
@@ -626,9 +634,13 @@ dz.ondrop = function(e){
 };
 fi.onchange = function(){ if(fi.files[0]) pick(fi.files[0]); };
 
-function pick(f){
+function pick(f, label){
   file = f;
-  fname.textContent = f.name;
+  fname.textContent = label || f.name;
+  if(dzThumb.src && dzThumb.src.indexOf('blob:') === 0) URL.revokeObjectURL(dzThumb.src);
+  dzThumb.src = URL.createObjectURL(f);
+  dzThumb.classList.add('show');
+  if(!label) markHistSel(null);
   bInk.disabled = false;
   bCol.disabled = false;
   pv.classList.remove('show');
@@ -688,9 +700,44 @@ function renderHistory(renders){
     lbl.textContent = r.type + (r.renderPrompt ? ' — ' + r.renderPrompt.slice(0, 20) : '');
     div.appendChild(img);
     div.appendChild(lbl);
-    div.onclick = function(){ renderPrompt.value = r.renderPrompt || ''; };
+    div.dataset.renderId = r.id;
+    if(r.hasFiles){
+      var reuse = document.createElement('div');
+      reuse.className = 'hist-reuse';
+      reuse.textContent = '↻ Repasser';
+      div.appendChild(reuse);
+    }
+    div.onclick = function(){ reuseRender(r); };
     histGrid.appendChild(div);
   });
+}
+
+function markHistSel(id){
+  [].forEach.call(histGrid.children, function(el){
+    el.classList.toggle('sel', !!id && el.dataset.renderId === id);
+  });
+}
+
+// Recharge le croquis original d'un rendu de l'historique comme fichier courant
+async function reuseRender(r){
+  renderPrompt.value = r.renderPrompt || '';
+  if(!r.hasFiles){
+    setStatus('Croquis original non disponible pour ce rendu (trop ancien) — seul le prompt a été repris.', 'err');
+    return;
+  }
+  try {
+    var resp = await fetch('/api/renders/' + r.id + '/original');
+    if(!resp.ok) throw new Error('croquis original introuvable');
+    var blob = await resp.blob();
+    var f = new File([blob], 'croquis-' + r.id + '.png', { type: 'image/png' });
+    var d = r.timestamp ? new Date(r.timestamp).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    pick(f, 'Croquis de l\u2019historique (' + r.type + (d ? ', ' + d : '') + ')');
+    markHistSel(r.id);
+    setStatus('Croquis rechargé — choisis Encrer ou Coloriser pour le repasser.', 'ok');
+    dz.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch(e) {
+    setStatus('Erreur : ' + e.message, 'err');
+  }
 }
 
 async function saveProjectPrompt(){
