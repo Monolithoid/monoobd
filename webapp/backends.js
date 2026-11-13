@@ -9,7 +9,11 @@
 //   novelai  → NovelAI Image API (img2img)
 //
 // Chaque backend expose la même interface :
-//   generate({ image, prompt, negativePrompt, mode, strength }) → base64 PNG
+//   generate({ image, prompt, negativePrompt, mode, strength, params }) → base64 PNG
+//
+// `params` déclare les réglages ajustables depuis l'interface (par moteur).
+// Les valeurs reçues sont filtrées et bornées par sanitizeParams() ; une
+// valeur absente reprend la valeur par défaut (variables d'environnement).
 //
 // Un backend n'est « configuré » que si ses variables d'environnement
 // sont présentes (clé API). Le backend par défaut est DEFAULT_BACKEND
@@ -34,6 +38,40 @@ const NOVELAI_MODEL   = process.env.NOVELAI_MODEL || 'nai-diffusion-4-5-full';
 const NOVELAI_STEPS   = parseInt(process.env.NOVELAI_STEPS || '28', 10);
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// Force de transformation commune (img2img) : vide = auto selon le mode
+const STRENGTH_PARAM = {
+  key: 'strength', label: 'Force de transformation', type: 'number',
+  min: 0.05, max: 0.99, step: 0.05, default: null,
+  hint: 'Vide = auto selon le mode. Plus élevé = s’éloigne davantage du croquis.',
+};
+
+/** Ne garde que les paramètres déclarés par le backend, bornés et typés. */
+function sanitizeParams(backend, raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const def of backend.params || []) {
+    const v = raw[def.key];
+    if (v === undefined || v === null || v === '') continue;
+    if (def.type === 'number') {
+      let n = Number(v);
+      if (!Number.isFinite(n)) continue;
+      if (def.integer) n = Math.round(n);
+      n = Math.min(def.max, Math.max(def.min, n));
+      out[def.key] = n;
+    } else if (def.type === 'select') {
+      if (def.options.some(o => o.value === String(v))) out[def.key] = String(v);
+    }
+  }
+  return out;
+}
+
+/** Valeur effective d'un paramètre : celle reçue, sinon la valeur par défaut. */
+function param(backend, params, key) {
+  if (params && params[key] !== undefined) return params[key];
+  const def = (backend.params || []).find(d => d.key === key);
+  return def ? def.default : undefined;
+}
 
 async function httpError(name, r) {
   let body = '';
@@ -75,7 +113,13 @@ const local = {
       return r.ok;
     } catch { return false; }
   },
-  async generate({ image, prompt, negativePrompt, mode, strength }) {
+  params: [
+    { key: 'steps', label: 'Étapes', type: 'number', integer: true, min: 5, max: 50, step: 1, default: 20,
+      hint: 'Plus d’étapes = plus de détails, mais plus lent sur CPU.' },
+    { key: 'cfg_scale', label: 'Guidance (CFG)', type: 'number', min: 1, max: 15, step: 0.5, default: 7,
+      hint: 'Fidélité au prompt.' },
+  ],
+  async generate({ image, prompt, negativePrompt, mode, strength, params }) {
     const r = await fetch(`${INFERENCE_URL}/generate`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -84,8 +128,8 @@ const local = {
         prompt,
         negative_prompt:    negativePrompt,
         mode,
-        steps:              20,
-        cfg_scale:          7,
+        steps:              param(local, params, 'steps'),
+        cfg_scale:          param(local, params, 'cfg_scale'),
         denoising_strength: strength,
       }),
       signal:  AbortSignal.timeout(GEN_TIMEOUT),
@@ -109,7 +153,20 @@ const openai = {
   label: `ChatGPT / OpenAI (${OPENAI_IMAGE_MODEL})`,
   configured: () => !!OPENAI_API_KEY,
   async ready() { return !!OPENAI_API_KEY; },
-  async generate({ image, prompt, negativePrompt, mode }) {
+  params: [
+    { key: 'quality', label: 'Qualité', type: 'select', default: OPENAI_IMAGE_QUALITY,
+      options: [
+        { value: 'low', label: 'Basse' }, { value: 'medium', label: 'Moyenne' },
+        { value: 'high', label: 'Haute' }, { value: 'auto', label: 'Auto' },
+      ],
+      hint: 'Haute qualité = plus cher et plus lent.' },
+    { key: 'input_fidelity', label: 'Fidélité au croquis', type: 'select', default: '',
+      options: [
+        { value: '', label: 'Par défaut' }, { value: 'low', label: 'Basse' }, { value: 'high', label: 'Haute' },
+      ],
+      hint: 'Haute = conserve mieux les traits et la composition du croquis.' },
+  ],
+  async generate({ image, prompt, negativePrompt, mode, params }) {
     if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY non configurée');
     const buf  = Buffer.from(image, 'base64');
     const meta = await sharp(buf).metadata();
@@ -125,7 +182,9 @@ const openai = {
     fd.append('model',   OPENAI_IMAGE_MODEL);
     fd.append('prompt',  fullPrompt);
     fd.append('size',    openaiSize(meta.width, meta.height));
-    fd.append('quality', OPENAI_IMAGE_QUALITY);
+    fd.append('quality', param(openai, params, 'quality'));
+    const fidelity = param(openai, params, 'input_fidelity');
+    if (fidelity) fd.append('input_fidelity', fidelity);
     fd.append('n',       '1');
     fd.append('image',   new Blob([buf], { type: 'image/png' }), 'sketch.png');
 
@@ -159,10 +218,27 @@ function novelaiDims(width, height) {
 
 const novelai = {
   id:    'novelai',
-  label: `NovelAI (${NOVELAI_MODEL})`,
+  label: 'NovelAI',
   configured: () => !!NOVELAI_API_KEY,
   async ready() { return !!NOVELAI_API_KEY; },
-  async generate({ image, prompt, negativePrompt, strength }) {
+  params: [
+    { key: 'model', label: 'Modèle', type: 'select', default: NOVELAI_MODEL,
+      options: [...new Set([NOVELAI_MODEL,
+        'nai-diffusion-4-5-full', 'nai-diffusion-4-5-curated',
+        'nai-diffusion-4-full', 'nai-diffusion-4-curated-preview', 'nai-diffusion-3'])]
+        .map(v => ({ value: v, label: v })) },
+    STRENGTH_PARAM,
+    { key: 'noise', label: 'Bruit ajouté', type: 'number', min: 0, max: 0.99, step: 0.05, default: 0,
+      hint: 'Ajoute de la variation et des détails ; trop élevé = perte de la composition.' },
+    { key: 'steps', label: 'Étapes', type: 'number', integer: true, min: 1, max: 50, step: 1, default: NOVELAI_STEPS,
+      hint: 'Au-delà de 28 étapes, la génération consomme des Anlas.' },
+    { key: 'scale', label: 'Guidance (CFG)', type: 'number', min: 1, max: 10, step: 0.5, default: 5,
+      hint: 'Fidélité au prompt.' },
+    { key: 'sampler', label: 'Sampler', type: 'select', default: 'k_euler_ancestral',
+      options: ['k_euler_ancestral', 'k_euler', 'k_dpmpp_2s_ancestral', 'k_dpmpp_2m_sde', 'k_dpmpp_2m', 'k_dpmpp_sde']
+        .map(v => ({ value: v, label: v })) },
+  ],
+  async generate({ image, prompt, negativePrompt, strength, params }) {
     if (!NOVELAI_API_KEY) throw new Error('NOVELAI_API_KEY non configurée');
     const buf  = Buffer.from(image, 'base64');
     const meta = await sharp(buf).metadata();
@@ -170,17 +246,18 @@ const novelai = {
     const resized = (await sharp(buf).resize(width, height, { fit: 'fill' }).png().toBuffer())
       .toString('base64');
 
-    const isV4  = /diffusion-4/.test(NOVELAI_MODEL);
-    const is45  = /diffusion-4-5/.test(NOVELAI_MODEL);
+    const model = param(novelai, params, 'model');
+    const isV4  = /diffusion-4/.test(model);
+    const is45  = /diffusion-4-5/.test(model);
     const seed  = Math.floor(Math.random() * 4294967295);
     // Paramètres alignés sur ceux envoyés par novelai.net (params_version 3)
     const parameters = {
       params_version:   3,
       width,
       height,
-      scale:            5,
-      sampler:          'k_euler_ancestral',
-      steps:            NOVELAI_STEPS,
+      scale:            param(novelai, params, 'scale'),
+      sampler:          param(novelai, params, 'sampler'),
+      steps:            param(novelai, params, 'steps'),
       n_samples:        1,
       seed,
       ucPreset:         0,
@@ -211,7 +288,7 @@ const novelai = {
       // augmenter NOVELAI_STRENGTH (ex. 0.75–0.85).
       image:            resized,
       strength,
-      noise:            0,
+      noise:            param(novelai, params, 'noise'),
       extra_noise_seed: seed,
     };
     if (isV4) {
@@ -235,7 +312,7 @@ const novelai = {
         Origin:         'https://novelai.net',
         Referer:        'https://novelai.net/',
       },
-      body: JSON.stringify({ input: prompt, model: NOVELAI_MODEL, action: 'img2img', parameters }),
+      body: JSON.stringify({ input: prompt, model, action: 'img2img', parameters }),
       signal: AbortSignal.timeout(GEN_TIMEOUT),
     });
     if (!r.ok) throw await httpError('novelai', r);
@@ -270,4 +347,4 @@ function get(id) {
   return b;
 }
 
-module.exports = { get, available, defaultBackendId, firstFileFromZip, novelaiDims, openaiSize };
+module.exports = { get, available, defaultBackendId, sanitizeParams, firstFileFromZip, novelaiDims, openaiSize };

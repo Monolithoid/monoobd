@@ -143,7 +143,7 @@ app.get('/api/status', async (req, res) => {
 app.get('/api/backends', auth, (_req, res) => {
   res.json({
     default:  backends.defaultBackendId(),
-    backends: backends.available().map(b => ({ id: b.id, label: b.label })),
+    backends: backends.available().map(b => ({ id: b.id, label: b.label, params: b.params || [] })),
   });
 });
 
@@ -255,10 +255,14 @@ app.post('/api/projects/:pid/renders/:rid/relaunch', auth, async (req, res) => {
     const b64          = fs.readFileSync(originalFile).toString('base64');
     const renderPrompt = req.body.renderPrompt ?? render.renderPrompt;
     const type         = render.type;
-    const backendId    = req.body.backend || render.backend || backends.defaultBackendId();
+    const backendId    = backends.get(req.body.backend || render.backend).id;
+    // Paramètres : ceux envoyés, sinon ceux du rendu d'origine si même moteur
+    const params = req.body.params !== undefined
+      ? parseParams(backendId, req.body.params)
+      : (backendId === render.backend ? parseParams(backendId, render.params) : {});
 
     const resultB64 = await renderSketch(backendId, type, b64,
-      project.projectPrompt, renderPrompt);
+      project.projectPrompt, renderPrompt, params);
 
     const newId = crypto.randomBytes(6).toString('hex');
     saveRenderFiles(newId, b64, resultB64);
@@ -267,6 +271,7 @@ app.post('/api/projects/:pid/renders/:rid/relaunch', auth, async (req, res) => {
       id:           newId,
       type,
       backend:      backendId,
+      params,
       timestamp:    new Date().toISOString(),
       renderPrompt,
       thumbnail:    await toThumbnail(resultB64),
@@ -355,14 +360,24 @@ function maxInputDim(backendId) {
   return backendId === 'local' ? 768 : 1536;
 }
 
-async function renderSketch(backendId, mode, image, projectPrompt, renderPrompt) {
+// Paramètres moteur reçus en JSON (champ de formulaire ou corps de requête)
+function parseParams(backendId, raw) {
+  let obj = raw;
+  if (typeof raw === 'string') {
+    try { obj = JSON.parse(raw); } catch { obj = null; }
+  }
+  return backends.sanitizeParams(backends.get(backendId), obj);
+}
+
+async function renderSketch(backendId, mode, image, projectPrompt, renderPrompt, params = {}) {
   const style = styleFor(mode, backendId);
   return backends.get(backendId).generate({
     image,
     prompt:         buildPrompt(style.prompt, projectPrompt, renderPrompt),
     negativePrompt: style.negative,
     mode,
-    strength:       style.strength,
+    strength:       params.strength ?? style.strength,
+    params,
   });
 }
 
@@ -381,10 +396,11 @@ for (const mode of Object.keys(STYLES)) {
       if (!req.file) return res.status(400).json({ error: 'Aucun fichier reçu' });
       const { projectId, renderPrompt = '' } = req.body;
       const backendId = backends.get(req.body.backend).id;
+      const params    = parseParams(backendId, req.body.params);
       const project   = projectId ? loadProject(projectId) : null;
       const b64       = await toB64(req.file.buffer, maxInputDim(backendId));
       const resultB64 = await renderSketch(backendId, mode, b64,
-        project ? project.projectPrompt : '', renderPrompt);
+        project ? project.projectPrompt : '', renderPrompt, params);
       if (project) {
         const renderId = crypto.randomBytes(6).toString('hex');
         saveRenderFiles(renderId, b64, resultB64);
@@ -392,6 +408,7 @@ for (const mode of Object.keys(STYLES)) {
           id:        renderId,
           type:      mode,
           backend:   backendId,
+          params,
           timestamp: new Date().toISOString(),
           renderPrompt,
           thumbnail: await toThumbnail(resultB64),
@@ -462,6 +479,21 @@ input[type=file]{display:none}
 .backend-row{display:flex;gap:.5rem;align-items:center;justify-content:center;margin-top:1rem;font-size:.875rem;color:#94a3b8}
 .backend-row select{background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:.4rem .75rem;font-size:.875rem;max-width:100%}
 .backend-row select:focus{outline:none;border-color:#f97316}
+.params-box{max-width:640px;margin:.75rem auto 0;background:#1e293b;border:1px solid #334155;border-radius:10px;font-size:.8rem}
+.params-box[hidden]{display:none}
+.params-box summary{cursor:pointer;padding:.5rem .875rem;color:#94a3b8;font-weight:600;list-style:none}
+.params-box summary::-webkit-details-marker{display:none}
+.params-box summary::before{content:'▸';display:inline-block;margin-right:.4rem;transition:transform .15s}
+.params-box[open] summary::before{transform:rotate(90deg)}
+.params-box summary .p-sum{font-weight:400;color:#64748b;margin-left:.4rem}
+.params-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.75rem;padding:.25rem .875rem .5rem}
+.param label{display:block;font-size:.72rem;color:#94a3b8;font-weight:600;margin-bottom:.25rem}
+.param input,.param select{width:100%;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:.35rem .5rem;font-size:.8rem;font-family:inherit}
+.param input:focus,.param select:focus{outline:none;border-color:#f97316}
+.param .hint{font-size:.65rem;color:#64748b;margin-top:.2rem;line-height:1.3}
+.params-foot{display:flex;justify-content:flex-end;padding:0 .875rem .625rem}
+.btn-reset{background:#334155;color:#e2e8f0;padding:.3rem .75rem;font-size:.72rem;border-radius:6px}
+.btn-reset:hover{background:#475569}
 button{padding:.625rem 1.75rem;border:none;border-radius:8px;font-size:.9rem;
   cursor:pointer;font-weight:600;transition:opacity .15s,transform .1s}
 button:active{transform:scale(.97)}
@@ -568,6 +600,11 @@ button:disabled{opacity:.4;cursor:not-allowed}
     <label for="backendSel">Moteur IA</label>
     <select id="backendSel" onchange="onBackendChange()"></select>
   </div>
+  <details class="params-box" id="paramsBox" hidden>
+    <summary>R&eacute;glages du moteur<span class="p-sum" id="paramsSum"></span></summary>
+    <div class="params-grid" id="paramsGrid"></div>
+    <div class="params-foot"><button class="btn-reset" type="button" onclick="resetParams()">R&eacute;initialiser</button></div>
+  </details>
 
   <div class="actions">
     <button class="btn-ink" id="bInk" disabled onclick="run('encrage')">
@@ -622,6 +659,10 @@ var warnNoProj   = document.getElementById('warnNoProj');
 var histDiv  = document.getElementById('history');
 var histGrid = document.getElementById('histGrid');
 var backendSel = document.getElementById('backendSel');
+var paramsBox  = document.getElementById('paramsBox');
+var paramsGrid = document.getElementById('paramsGrid');
+var paramsSum  = document.getElementById('paramsSum');
+var backendDefs = {};
 var readyTimer = null;
 
 // Drag & drop
@@ -691,7 +732,8 @@ function renderHistory(renders){
   renders.slice().reverse().forEach(function(r){
     var div = document.createElement('div');
     div.className = 'hist-thumb';
-    div.title = r.renderPrompt || r.type;
+    div.title = [r.renderPrompt || r.type, r.backend, fmtParams(r.params)]
+      .filter(function(x){ return x; }).join(' | ');
     var img = document.createElement('img');
     img.src = r.hasFiles ? '/api/renders/' + r.id + '/result' : r.thumbnail;
     img.alt = r.type;
@@ -733,6 +775,11 @@ async function reuseRender(r){
     var d = r.timestamp ? new Date(r.timestamp).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '';
     pick(f, 'Croquis de l\u2019historique (' + r.type + (d ? ', ' + d : '') + ')');
     markHistSel(r.id);
+    // Reprend le moteur et les réglages utilisés pour ce rendu
+    if(r.backend && backendDefs[r.backend]){
+      if(backendSel.value !== r.backend){ backendSel.value = r.backend; pollReady(); }
+      renderParams(r.params || {});
+    }
     setStatus('Croquis rechargé — choisis Encrer ou Coloriser pour le repasser.', 'ok');
     dz.scrollIntoView({ behavior: 'smooth', block: 'center' });
   } catch(e) {
@@ -793,6 +840,7 @@ async function run(action){
     fd.append('file', file);
     fd.append('renderPrompt', renderPrompt.value);
     fd.append('backend', backendSel.value);
+    fd.append('params', JSON.stringify(collectParams()));
     if(currentProjectId) fd.append('projectId', currentProjectId);
     var resp = await fetch('/api/' + action, { method: 'POST', body: fd });
     var data = await resp.json();
@@ -817,7 +865,93 @@ async function run(action){
 
 function onBackendChange(){
   setStatus('');
+  renderParams(loadSavedParams(backendSel.value));
   pollReady();
+}
+
+// ── Réglages par moteur (mémorisés dans le navigateur) ──────────────────────────────
+
+function paramsKey(id){ return 'monoobd.params.' + id; }
+function loadSavedParams(id){
+  try { return JSON.parse(localStorage.getItem(paramsKey(id))) || {}; } catch(e){ return {}; }
+}
+function saveParams(){
+  try { localStorage.setItem(paramsKey(backendSel.value), JSON.stringify(collectParams())); } catch(e){}
+  updateParamsSummary();
+}
+
+function renderParams(values){
+  var defs = backendDefs[backendSel.value] || [];
+  paramsGrid.innerHTML = '';
+  paramsBox.hidden = !defs.length;
+  values = values || {};
+  defs.forEach(function(d){
+    var wrap = document.createElement('div');
+    wrap.className = 'param';
+    var id = 'param-' + d.key;
+    var lbl = document.createElement('label');
+    lbl.htmlFor = id; lbl.textContent = d.label;
+    var input;
+    if(d.type === 'select'){
+      input = document.createElement('select');
+      d.options.forEach(function(o){
+        var opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label + (o.value === d.default ? ' (défaut)' : '');
+        input.appendChild(opt);
+      });
+      var v = values[d.key] !== undefined ? String(values[d.key]) : (d.default == null ? '' : String(d.default));
+      if(d.options.some(function(o){ return o.value === v; })) input.value = v;
+    } else {
+      input = document.createElement('input');
+      input.type = 'number';
+      input.min = d.min; input.max = d.max; input.step = d.step || 'any';
+      input.placeholder = d.default == null ? 'auto' : String(d.default);
+      input.value = values[d.key] !== undefined ? values[d.key] : '';
+    }
+    input.id = id;
+    input.dataset.key = d.key;
+    input.onchange = saveParams;
+    wrap.appendChild(lbl);
+    wrap.appendChild(input);
+    if(d.hint){
+      var h = document.createElement('div');
+      h.className = 'hint'; h.textContent = d.hint;
+      wrap.appendChild(h);
+    }
+    paramsGrid.appendChild(wrap);
+  });
+  updateParamsSummary();
+}
+
+// Ne renvoie que les valeurs qui diffèrent des valeurs par défaut
+function collectParams(){
+  var out = {};
+  (backendDefs[backendSel.value] || []).forEach(function(d){
+    var el = document.getElementById('param-' + d.key);
+    if(!el || el.value === '') return;
+    if(d.type === 'number'){
+      var n = Number(el.value);
+      if(isFinite(n)) out[d.key] = n;
+    } else if(el.value !== String(d.default)) {
+      out[d.key] = el.value;
+    }
+  });
+  return out;
+}
+
+function fmtParams(p){
+  return Object.keys(p || {}).map(function(k){ return k + '=' + p[k]; }).join(', ');
+}
+
+function updateParamsSummary(){
+  var txt = fmtParams(collectParams());
+  paramsSum.textContent = '— ' + (txt || 'valeurs par défaut');
+}
+
+function resetParams(){
+  try { localStorage.removeItem(paramsKey(backendSel.value)); } catch(e){}
+  renderParams({});
 }
 
 async function pollReady(){
@@ -845,9 +979,11 @@ async function pollReady(){
     var opt = document.createElement('option');
     opt.value = b.id; opt.textContent = b.label;
     backendSel.appendChild(opt);
+    backendDefs[b.id] = b.params || [];
   });
   var wanted = info.lastBackend || bk.default;
   if(wanted && (bk.backends || []).some(function(b){ return b.id === wanted; })) backendSel.value = wanted;
+  renderParams(loadSavedParams(backendSel.value));
   pollReady();
 })();
 </script>
@@ -1147,6 +1283,9 @@ function buildCard(projectId, render) {
     +     '<span class="card-date">' + fmtDate(render.timestamp) + '</span>'
     +   '</div>'
     +   '<div class="card-prompt">' + esc(render.renderPrompt || '—') + '</div>'
+    +   (render.params && Object.keys(render.params).length
+          ? '<div class="card-prompt" style="font-size:.65rem;opacity:.75">&#9881; ' + esc(Object.keys(render.params).map(function(k){ return k + '=' + render.params[k]; }).join(', ')) + '</div>'
+          : '')
     +   '<div class="card-actions">'
     +     '<button class="ca ca-view" onclick="openLightbox(\\'' + render.id + '\\',\\'' + caption + '\\')" ' + (imgSrc ? '' : 'disabled') + '>&#128065; Voir</button>'
     +     '<button class="ca ca-cmp" onclick="openCompare(\\'' + render.id + '\\')" ' + (hasFiles ? '' : 'disabled title="Fichiers non disponibles (rendu ancien)"') + '>&#9867; Comparer</button>'

@@ -38,6 +38,7 @@ Le répertoire `a1111/` est obsolète (ancienne tentative de fix A1111) — peut
 - **webapp** (`monolithoid/bd-webapp`) : Node.js/Express, Google SSO, upload + prévisualisation
   - Moteurs sélectionnables dans `webapp/backends.js` : `local` (appelle `http://inference:8000/generate` via `INFERENCE_URL`), `openai`, `novelai`
   - Un moteur n'apparaît que si sa clé API est configurée ; `GET /api/backends` liste les moteurs disponibles
+  - Chaque moteur déclare ses réglages (`params` dans `backends.js`) : renvoyés par `GET /api/backends`, ajustables dans l'UI (mémorisés par navigateur), envoyés en JSON (`params`) et validés par `sanitizeParams()`. Les variables d'environnement servent de valeurs par défaut. Les réglages utilisés sont stockés dans chaque rendu.
   - Pas d'Ollama ni d'Open WebUI : les appels se font en direct depuis la webapp
 
 ## CI/CD
