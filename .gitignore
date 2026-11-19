@@ -10,7 +10,7 @@
 id_rsa*
 id_ed25519*
 
-# Dépendances et données locales
+# Dependencies and local data
 node_modules/
 __pycache__/
 *.pyc

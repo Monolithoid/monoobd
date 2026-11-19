@@ -32,7 +32,7 @@ _pipelines: dict = {}
 
 def get_pipeline(mode: str) -> StableDiffusionControlNetPipeline:
     if mode not in _pipelines:
-        log.info(f"Chargement pipeline {mode}…")
+        log.info(f"Loading pipeline {mode}…")
         cn_id = CN_SCRIBBLE if mode == "encrage" else CN_LINEART
         controlnet = ControlNetModel.from_pretrained(
             cn_id, torch_dtype=torch.float32, cache_dir=HF_CACHE)
@@ -44,11 +44,11 @@ def get_pipeline(mode: str) -> StableDiffusionControlNetPipeline:
         )
         pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
         pipe.enable_attention_slicing()
-        # Désactive le safety checker (inutile, ralentit l'inférence)
+        # Disable the safety checker (not needed, slows inference down)
         if hasattr(pipe, "safety_checker"):
             pipe.safety_checker = None
         _pipelines[mode] = pipe
-        log.info(f"Pipeline {mode} prêt.")
+        log.info(f"Pipeline {mode} ready.")
     return _pipelines[mode]
 
 
@@ -60,7 +60,7 @@ async def lifespan(app: FastAPI):
             try:
                 get_pipeline(mode)
             except Exception as e:
-                log.warning(f"Preload {mode} échoué : {e}")
+                log.warning(f"Preload {mode} failed: {e}")
     yield
 
 
@@ -92,7 +92,7 @@ def _pil_to_b64(img: Image.Image) -> str:
 
 
 def _snap8(n: int) -> int:
-    """Multiple de 8 inférieur — exigence Stable Diffusion."""
+    """Rounds down to a multiple of 8 — a Stable Diffusion requirement."""
     return max(8, (n // 8) * 8)
 
 
@@ -104,7 +104,7 @@ def health():
 @app.post("/generate", response_model=GenerateResponse)
 def generate(req: GenerateRequest):
     if req.mode not in ("encrage", "colorisation"):
-        raise HTTPException(400, f"mode invalide : {req.mode!r}")
+        raise HTTPException(400, f"invalid mode: {req.mode!r}")
     try:
         img = _b64_to_pil(req.image)
         img = img.resize((_snap8(img.width), _snap8(img.height)), Image.LANCZOS)
@@ -123,7 +123,7 @@ def generate(req: GenerateRequest):
     except HTTPException:
         raise
     except Exception as e:
-        log.exception("Erreur generate")
+        log.exception("generate failed")
         raise HTTPException(500, str(e))
 
 

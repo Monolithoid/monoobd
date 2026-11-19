@@ -23,7 +23,7 @@ const upload = multer({
 
 const ALLOWED_EMAIL = process.env.ALLOWED_EMAIL  || '';
 const DOMAIN        = process.env.DOMAIN         || 'localhost';
-if (!ALLOWED_EMAIL) console.warn('ALLOWED_EMAIL non défini : toutes les connexions seront refusées.');
+if (!ALLOWED_EMAIL) console.warn('ALLOWED_EMAIL not set: every login will be refused.');
 const PORT          = 8080;
 const PROJECTS_DIR  = '/data/projects';
 const RENDERS_DIR   = '/data/renders';
@@ -31,7 +31,7 @@ const RENDERS_DIR   = '/data/renders';
 if (!fs.existsSync(PROJECTS_DIR)) fs.mkdirSync(PROJECTS_DIR, { recursive: true });
 if (!fs.existsSync(RENDERS_DIR))  fs.mkdirSync(RENDERS_DIR,  { recursive: true });
 
-// ── Projets helpers ────────────────────────────────────────────────────────────────────────
+// ── Project helpers ────────────────────────────────────────────────────────────────────────
 
 function loadProject(id) {
   const file = path.join(PROJECTS_DIR, `${id}.json`);
@@ -90,8 +90,8 @@ passport.use(new GoogleStrategy(
   },
   (_at, _rt, profile, done) => {
     const email = profile.emails?.[0]?.value ?? '';
-    // Refus par défaut : sans ALLOWED_EMAIL, personne ne peut se connecter
-    // (sinon n'importe quel compte Google aurait accès et consommerait les clés API).
+    // Deny by default: without ALLOWED_EMAIL, nobody can log in
+    // (otherwise any Google account would get access and use up the API keys).
     if (!ALLOWED_EMAIL || email !== ALLOWED_EMAIL) return done(null, false);
     done(null, { email, name: profile.displayName });
   },
@@ -127,7 +127,7 @@ app.get('/', auth, (req, res) =>
 app.get('/gallery', auth, (req, res) =>
   res.send(GALLERY_HTML.replace('{{USER}}', req.user.name)));
 
-// ── API : statut serveur ─────────────────────────────────────────────────────────────────
+// ── API: server status ─────────────────────────────────────────────────────────────────
 
 app.get('/api/status', async (req, res) => {
   try {
@@ -138,7 +138,7 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
-// ── API : backends disponibles ─────────────────────────────────────────────────────────
+// ── API: available backends ─────────────────────────────────────────────────────────
 
 app.get('/api/backends', auth, (_req, res) => {
   res.json({
@@ -147,7 +147,7 @@ app.get('/api/backends', auth, (_req, res) => {
   });
 });
 
-// ── API : infos session ─────────────────────────────────────────────────────────────────
+// ── API: session info ─────────────────────────────────────────────────────────────────
 
 app.get('/api/session-info', auth, (req, res) => {
   res.json({
@@ -156,7 +156,7 @@ app.get('/api/session-info', auth, (req, res) => {
   });
 });
 
-// ── API : projets ──────────────────────────────────────────────────────────────────────────
+// ── API: projects ──────────────────────────────────────────────────────────────────────────
 
 app.get('/api/projects', auth, (_req, res) => {
   res.json(listProjects());
@@ -199,7 +199,7 @@ app.delete('/api/projects/:id', auth, (req, res) => {
   res.json({ ok: true });
 });
 
-// ── API : gestion des rendus ─────────────────────────────────────────────────────────────
+// ── API: render management ─────────────────────────────────────────────────────────────
 
 app.get('/api/renders/:id/original', auth, (req, res) => {
   const file = path.join(RENDERS_DIR, req.params.id, 'original.png');
@@ -280,7 +280,7 @@ app.post('/api/projects/:pid/renders/:rid/relaunch', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Helpers image ────────────────────────────────────────────────────────────────────────
+// ── Image helpers ────────────────────────────────────────────────────────────────────────
 
 async function toB64(buffer, maxDim = 768) {
   const img  = sharp(buffer);
@@ -303,7 +303,7 @@ async function toThumbnail(b64, maxDim = 200) {
   return 'data:image/png;base64,' + (await out.png().toBuffer()).toString('base64');
 }
 
-// Prompts de style par mode (communs à tous les backends)
+// Style prompts per mode (shared by all backends)
 const STYLES = {
   encrage: {
     prompt:   'manga line art, ligne claire style, Herge Tintin, black and white, '
@@ -312,8 +312,8 @@ const STYLES = {
     negative: 'color, blur, rough sketch, pencil marks, shading, '
             + 'crosshatching, watermark, signature, low quality, noise, grain',
     strength: 0.7,
-    // NovelAI (V4/V4.5) : prompt en tags, sans « flat / no shadows » qui
-    // simplifient fortement le rendu. qualityToggle ajoute déjà les tags qualité.
+    // NovelAI (V4/V4.5): tag-style prompt, without "flat / no shadows", which
+    // heavily simplify the result. qualityToggle already adds the quality tags.
     novelai: {
       prompt:   'comic book page, detailed clean lineart, ink, monochrome, greyscale, '
               + 'bold confident outlines, detailed background, intricate details, '
@@ -340,7 +340,7 @@ const STYLES = {
   },
 };
 
-// Style effectif pour un backend : surcharge éventuelle (ex. STYLES.encrage.novelai)
+// Effective style for a backend: optional override (e.g. STYLES.encrage.novelai)
 function styleFor(mode, backendId) {
   const base = STYLES[mode];
   if (!base) throw new Error(`mode invalide : ${mode}`);
@@ -350,7 +350,7 @@ function styleFor(mode, backendId) {
   return style;
 }
 
-// Les API distantes acceptent des images plus grandes que le CPU local
+// Remote APIs accept larger images than the local CPU
 function maxInputDim(backendId) {
   return backendId === 'local' ? 768 : 1536;
 }
@@ -373,7 +373,7 @@ function buildPrompt(base, projectPrompt, renderPrompt) {
   return p;
 }
 
-// ── API : rendu ─────────────────────────────────────────────────────────────────────────────
+// ── API: render ─────────────────────────────────────────────────────────────────────────────
 
 for (const mode of Object.keys(STYLES)) {
   app.post(`/api/${mode}`, auth, upload.single('file'), async (req, res) => {
@@ -408,7 +408,7 @@ for (const mode of Object.keys(STYLES)) {
 
 app.listen(PORT, '0.0.0.0', () => console.log(`MonooBD :${PORT}`));
 
-// ── HTML inline — page principale ────────────────────────────────────────────────────────────
+// ── Inline HTML — main page ────────────────────────────────────────────────────────────
 const HTML = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -427,7 +427,7 @@ header{background:#1e293b;padding:.875rem 1.5rem;display:flex;justify-content:sp
 .btn-gallery:hover{background:#6d28d9}
 .container{max-width:1100px;margin:2rem auto;padding:0 1.25rem}
 
-/* Projets */
+/* Projects */
 .project-bar{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:1rem 1.25rem;margin-bottom:1.25rem}
 .project-bar h2{font-size:.75rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:.625rem}
 .project-row{display:flex;gap:.625rem;align-items:center;flex-wrap:wrap}
@@ -487,7 +487,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
   background:#0f172a;text-transform:uppercase;letter-spacing:.5px}
 .panel img{width:100%;display:block;min-height:200px;background:#334155}
 
-/* Historique */
+/* History */
 .history{margin-top:1.75rem;display:none}
 .history.show{display:block}
 .history h3{font-size:.75rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:.75rem}
@@ -515,7 +515,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 </header>
 <div class="container">
 
-  <!-- Projets -->
+  <!-- Projects -->
   <div class="project-bar">
     <h2>Projet</h2>
     <div class="project-row">
@@ -538,7 +538,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
     </div>
   </div>
 
-  <!-- Avertissement sans projet -->
+  <!-- Warning when no project is selected -->
   <div class="warn-no-project" id="warnNoProj">
     &#9888; Aucun projet s&eacute;lectionn&eacute; &mdash; ce rendu ne sera <strong>pas sauvegard&eacute;</strong> dans la galerie.
     <a href="#" onclick="openNewProject();return false;" style="color:#fb923c;margin-left:.5rem">Cr&eacute;er un projet</a>
@@ -557,7 +557,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
     <img class="dz-thumb" id="dzThumb" alt="Croquis s&eacute;lectionn&eacute;">
   </div>
 
-  <!-- Prompt rendu -->
+  <!-- Render prompt -->
   <div class="prompt-field" style="margin-top:.875rem">
     <label>Prompt rendu <span style="color:#64748b;font-weight:400">(optionnel, sp&eacute;cifique &agrave; ce rendu)</span></label>
     <textarea id="renderPrompt" rows="2" placeholder="Ex: personnage debout, fond for&ecirc;t, lumi&egrave;re dramatique..."></textarea>
@@ -590,7 +590,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
     </div>
   </div>
 
-  <!-- Historique rendus du projet -->
+  <!-- Project render history -->
   <div class="history" id="history">
     <h3>Historique du projet <span style="text-transform:none;letter-spacing:0;font-weight:400;color:#64748b">&mdash; clique sur un rendu pour repasser son croquis</span></h3>
     <div class="history-grid" id="histGrid"></div>
@@ -652,7 +652,7 @@ function setStatus(msg, cls){
   st.innerHTML = (cls === 'loading' ? '<span class="spin"></span>' : '') + msg;
 }
 
-// ── Projets ──────────────────────────────────────────────────────────────────────────────
+// ── Projects ──────────────────────────────────────────────────────────────────────────────
 
 async function loadProjects(){
   var list = await fetch('/api/projects').then(function(r){ return r.json(); }).catch(function(){ return []; });
@@ -718,7 +718,7 @@ function markHistSel(id){
   });
 }
 
-// Recharge le croquis original d'un rendu de l'historique comme fichier courant
+// Reloads the original sketch of a render from the history as the current file
 async function reuseRender(r){
   renderPrompt.value = r.renderPrompt || '';
   if(!r.hasFiles){
@@ -775,7 +775,7 @@ async function deleteProject(){
   await onProjectChange();
 }
 
-// ── Rendu ──────────────────────────────────────────────────────────────────────────────────
+// ── Render ──────────────────────────────────────────────────────────────────────────────────
 
 async function run(action){
   if(!file) return;
@@ -813,7 +813,7 @@ async function run(action){
   }
 }
 
-// ── Moteur IA ─────────────────────────────────────────────────────────────────────────
+// ── AI engine ─────────────────────────────────────────────────────────────────────────
 
 function onBackendChange(){
   setStatus('');
@@ -854,7 +854,7 @@ async function pollReady(){
 </body>
 </html>`;
 
-// ── HTML inline — galerie ─────────────────────────────────────────────────────────────────────
+// ── Inline HTML — gallery ─────────────────────────────────────────────────────────────────────
 const GALLERY_HTML = `<!DOCTYPE html>
 <html lang="fr">
 <head>

@@ -3,19 +3,19 @@
   MonooBD
 </h1>
 
-![Une scène de BD en trois étapes, du croquis à l’encrage puis à la colorisation](./assets/monoobd-social.jpg)
+![A comic scene in three steps, from sketch to inking to colouring](./assets/monoobd-social.jpg)
 
 # MonooBD
 
-Outil personnel pour finir des planches de bande dessinée belge.  
-Workflow : croquis papier → scan → upload → IA finit le travail → prévisualisation côte à côte.
+Personal tool for finishing Belgian-style comic pages.  
+Workflow: paper sketch → scan → upload → the AI finishes the job → side-by-side preview.
 
-**Deux actions :**
-- **Encrage** — nettoie le trait en noir et blanc, style ligne claire (Hergé/Tintin)
-- **Colorisation** — applique des couleurs à un encrage existant
+**Two actions:**
+- **Inking** (`encrage`) — cleans up the line art in black and white, *ligne claire* style (Hergé/Tintin)
+- **Colouring** (`colorisation`) — applies colours to an existing inked page
 
-**Stack :** HuggingFace Diffusers (SD 1.5 + ControlNet) · FastAPI · Node.js/Express · Google SSO · Coolify/Traefik · CPU uniquement  
-**URL :** `https://monoobd.monolithoid.com`
+**Stack:** HuggingFace Diffusers (SD 1.5 + ControlNet) · FastAPI · Node.js/Express · Google SSO · Coolify/Traefik · CPU only  
+**URL:** `https://monoobd.monolithoid.com`
 
 ---
 
@@ -24,23 +24,23 @@ Workflow : croquis papier → scan → upload → IA finit le travail → prévi
 ```
 browser → Traefik → monoobd-webapp (Node.js/Express) → bd-inference (FastAPI/Diffusers)
                                                                ↓
-                                               /opt/ia/bd/models/hf-cache/  (SD 1.5 + ControlNet, ~5 Go)
-                                               /opt/ia/bd/outputs/           (historique)
+                                               /opt/ia/bd/models/hf-cache/  (SD 1.5 + ControlNet, ~5 GB)
+                                               /opt/ia/bd/outputs/           (history)
 ```
 
-| Service | Image | Port interne |
+| Service | Image | Internal port |
 |---|---|---|
 | `bd-inference` | `monolithoid/bd-inference` | `127.0.0.1:8000` |
 | `monoobd-webapp` | `monolithoid/bd-webapp` | `127.0.0.1:8080` → `monoobd.DOMAIN` |
 
-### API inference
+### Inference API
 
 | Endpoint | Description |
 |---|---|
-| `GET /health` | `{"ready": true}` — vérifie que le service tourne |
-| `POST /generate` | Génération img2img + ControlNet |
+| `GET /health` | `{"ready": true}` — checks that the service is running |
+| `POST /generate` | img2img + ControlNet generation |
 
-Payload `/generate` :
+`/generate` payload:
 ```json
 {
   "image": "<base64 PNG>",
@@ -55,28 +55,28 @@ Payload `/generate` :
 
 ---
 
-## Déploiement pas à pas
+## Step-by-step deployment
 
 ### 1. Google OAuth
 
 1. [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials
 2. **Create Credentials** → OAuth 2.0 Client ID → Web application
-3. Authorized redirect URIs : `https://monoobd.monolithoid.com/auth`
-4. Copier **Client ID** et **Client Secret**
+3. Authorized redirect URIs: `https://monoobd.monolithoid.com/auth`
+4. Copy the **Client ID** and **Client Secret**
 
 ### 2. Docker Hub
 
-Secrets à configurer dans **Settings → Secrets → Actions** du repo :
+Secrets to set in the repo's **Settings → Secrets → Actions**:
 
-| Secret | Valeur |
+| Secret | Value |
 |---|---|
 | `DOCKERHUB_USERNAME` | `monolithoid` |
 | `DOCKERHUB_TOKEN` | Docker Hub → Account Settings → Security → New Access Token |
 
-Le premier push sur `main` déclenche le build CI.  
-`bd-webapp` : ~2 min (Node alpine). `bd-inference` : ~10-15 min (Python + PyTorch CPU).
+The first push to `main` triggers the CI build.  
+`bd-webapp`: ~2 min (Node alpine). `bd-inference`: ~10-15 min (Python + PyTorch CPU).
 
-### 3. Préparation du VPS
+### 3. Preparing the VPS
 
 ```bash
 ssh root@VPS
@@ -84,102 +84,102 @@ wget -O setup-vps.sh https://raw.githubusercontent.com/monolithoid/ia-bd/main/se
 bash setup-vps.sh
 ```
 
-Crée `/opt/ia/bd/{models,outputs,sessions}` et configure UFW.
+Creates `/opt/ia/bd/{models,outputs,sessions}` and configures UFW.
 
-### 4. Déploiement Coolify
+### 4. Coolify deployment
 
-1. **New Resource** → Docker Compose Raw → coller `docker-compose.yml`  
-   *(ou pointer vers ce dépôt GitHub)*
-2. Configurer les **Environment Variables** :
+1. **New Resource** → Docker Compose Raw → paste `docker-compose.yml`  
+   *(or point to this GitHub repository)*
+2. Set the **Environment Variables**:
 
-| Variable | Valeur | Description |
+| Variable | Value | Description |
 |---|---|---|
-| `DOMAIN` | `monolithoid.com` | Domaine principal |
-| `DOCKERHUB_USERNAME` | `monolithoid` | Username Docker Hub |
+| `DOMAIN` | `monolithoid.com` | Main domain |
+| `DOCKERHUB_USERNAME` | `monolithoid` | Docker Hub username |
 | `OAUTH_CLIENT_ID` | `123…apps.googleusercontent.com` | Google OAuth |
 | `OAUTH_CLIENT_SECRET` | `GOCSPX-…` | Google OAuth |
-| `SESSION_SECRET` | *(openssl rand -hex 32)* | Clé de chiffrement des sessions |
-| `ALLOWED_EMAIL` | `toi@gmail.com` | Seule adresse Gmail autorisée (obligatoire : sans elle, toute connexion est refusée) |
-| `PRELOAD_MODES` | `encrage,colorisation` | Pipelines à charger au démarrage (optionnel) |
-| `DEFAULT_BACKEND` | `local` | Moteur IA par défaut : `local`, `openai` ou `novelai` (optionnel) |
-| `OPENAI_API_KEY` | `sk-...` | Active le moteur ChatGPT / OpenAI Images (optionnel) |
-| `OPENAI_IMAGE_MODEL` | `gpt-image-1` | Modèle OpenAI utilisé (optionnel) |
-| `OPENAI_IMAGE_QUALITY` | `medium` | `low`, `medium` ou `high` (optionnel, impacte le coût) |
-| `NOVELAI_API_KEY` | `pst-...` | Persistent API Token NovelAI, active le moteur NovelAI (optionnel) |
-| `NOVELAI_MODEL` | `nai-diffusion-4-5-full` | Modèle NovelAI utilisé (optionnel) |
-| `NOVELAI_STRENGTH` | `0.6` | Force img2img NovelAI, 0 à 1 : plus haut = plus de détails ajoutés, moins fidèle au croquis (optionnel) |
-| `LOCAL_ENABLED` | `true` | `false` pour masquer le moteur local (optionnel) |
+| `SESSION_SECRET` | *(openssl rand -hex 32)* | Session encryption key |
+| `ALLOWED_EMAIL` | `you@gmail.com` | The only allowed Gmail address (required: without it, every login is refused) |
+| `PRELOAD_MODES` | `encrage,colorisation` | Pipelines to load at startup (optional) |
+| `DEFAULT_BACKEND` | `local` | Default AI engine: `local`, `openai` or `novelai` (optional) |
+| `OPENAI_API_KEY` | `sk-...` | Enables the ChatGPT / OpenAI Images engine (optional) |
+| `OPENAI_IMAGE_MODEL` | `gpt-image-1` | OpenAI model to use (optional) |
+| `OPENAI_IMAGE_QUALITY` | `medium` | `low`, `medium` or `high` (optional, affects cost) |
+| `NOVELAI_API_KEY` | `pst-...` | NovelAI Persistent API Token, enables the NovelAI engine (optional) |
+| `NOVELAI_MODEL` | `nai-diffusion-4-5-full` | NovelAI model to use (optional) |
+| `NOVELAI_STRENGTH` | `0.6` | NovelAI img2img strength, 0 to 1: higher = more detail added, less faithful to the sketch (optional) |
+| `LOCAL_ENABLED` | `true` | `false` to hide the local engine (optional) |
 
-3. Cliquer **Deploy**
+3. Click **Deploy**
 
-### 5. Premier démarrage
+### 5. First start
 
-Le service `bd-inference` télécharge ~5 Go de modèles depuis HuggingFace au premier démarrage :
+On first start, the `bd-inference` service downloads ~5 GB of models from HuggingFace:
 
 ```bash
 docker logs -f bd-inference
-# Attendre : Pipeline encrage prêt.
-#            Application startup complete.
+# Wait for: Pipeline encrage ready.
+#           Application startup complete.
 ```
 
-Les modèles sont ensuite en cache dans `/opt/ia/bd/models/hf-cache/` — les redémarrages suivants sont immédiats.
+The models are then cached in `/opt/ia/bd/models/hf-cache/` — later restarts are immediate.
 
 ---
 
-## Utilisation
+## Usage
 
-1. Ouvrir `https://monoobd.monolithoid.com`
-2. Se connecter via Google
-3. Glisser/déposer le scan du croquis
-4. Cliquer **Encrer** ou **Coloriser**
-5. Patienter 10-30 min (CPU sans GPU)
-6. Comparer original et résultat côte à côte
+1. Open `https://monoobd.monolithoid.com`
+2. Sign in with Google
+3. Drag and drop the sketch scan
+4. Click **Encrer** (ink) or **Coloriser** (colour)
+5. Wait 10-30 min (CPU, no GPU)
+6. Compare the original and the result side by side
 
 ---
 
-## Paramètres de génération
+## Generation settings
 
-| Action | Modèle ControlNet | Denoising | Prompt principal |
+| Action | ControlNet model | Denoising | Main prompt |
 |---|---|---|---|
-| Encrage | Scribble (`control_v11p_sd15_scribble`) | 0.70 | ligne claire, Hergé, B&W, crisp lines |
-| Colorisation | Lineart (`control_v11p_sd15_lineart`) | 0.50 | Tintin style, flat colors, vibrant |
+| Inking | Scribble (`control_v11p_sd15_scribble`) | 0.70 | ligne claire, Hergé, B&W, crisp lines |
+| Colouring | Lineart (`control_v11p_sd15_lineart`) | 0.50 | Tintin style, flat colors, vibrant |
 
-Base : `runwayml/stable-diffusion-v1-5`
+Base: `runwayml/stable-diffusion-v1-5`
 
 ---
 
-## Performances (CPU, 22 Go RAM)
+## Performance (CPU, 22 GB RAM)
 
-| Image | Étapes | Temps estimé |
+| Image | Steps | Estimated time |
 |---|---|---|
 | 512 × 512 | 20 | ~10-15 min |
 | 768 × 768 | 20 | ~25-40 min |
 
 ---
 
-## Mise à jour
+## Updating
 
 ```bash
-# Déclencher un nouveau build
+# Trigger a new build
 git commit --allow-empty -m "chore: rebuild" && git push
-# Redéployer depuis Coolify : bouton Redeploy
+# Redeploy from Coolify: Redeploy button
 ```
 
 ---
 
-## Dépannage
+## Troubleshooting
 
-**`bd-inference` ne répond pas**  
-→ `docker logs bd-inference` — vérifier le téléchargement des modèles HuggingFace
+**`bd-inference` does not respond**  
+→ `docker logs bd-inference` — check the HuggingFace model download
 
-**`/health` retourne 500**  
-→ Modèles peut-être corrompus : supprimer `/opt/ia/bd/models/hf-cache/` et redémarrer
+**`/health` returns 500**  
+→ The models may be corrupted: delete `/opt/ia/bd/models/hf-cache/` and restart
 
-**Erreur OAuth redirect_uri_mismatch**  
-→ L'URI `https://monoobd.monolithoid.com/auth` doit être exactement configurée dans Google Cloud Console
+**OAuth error redirect_uri_mismatch**  
+→ The URI `https://monoobd.monolithoid.com/auth` must be configured exactly in Google Cloud Console
 
-**Session perdue après redéploiement**  
-→ Utiliser toujours la même valeur de `SESSION_SECRET` entre déploiements
+**Session lost after redeploying**  
+→ Always use the same `SESSION_SECRET` value across deployments
 
-**Génération très lente**  
-→ Normal en CPU — préférer `PRELOAD_MODES=encrage,colorisation` pour éviter le rechargement entre appels
+**Generation is very slow**  
+→ Expected on CPU — prefer `PRELOAD_MODES=encrage,colorisation` to avoid reloading between calls

@@ -1,4 +1,4 @@
-name: Build & Push — Images BD
+name: Build & Push — BD images
 
 # Publie deux images sur Docker Hub :
 #   monolithoid/bd-inference  → Microserveur HuggingFace Diffusers (CPU)
@@ -34,17 +34,17 @@ jobs:
             context: ./inference
             dockerfile: ./inference/Dockerfile
             title: MonooBD inference
-            role: microserveur d'inférence (FastAPI + Diffusers, CPU)
+            role: inference microserver (FastAPI + Diffusers, CPU)
             # Docker Hub short description: 100 bytes max (accented characters count double)
-            description: "MonooBD — inférence CPU (Diffusers, SD 1.5 + ControlNet) pour encrer et coloriser des BD"
+            description: "MonooBD — CPU inference (Diffusers, SD 1.5 + ControlNet) to ink and colour comics"
 
           - name: bd-webapp
             image: monolithoid/bd-webapp
             context: ./webapp
             dockerfile: ./webapp/Dockerfile
             title: MonooBD webapp
-            role: interface web (Node.js/Express + Google SSO)
-            description: "MonooBD — interface web (Node.js/Express, Google SSO) pour encrer et coloriser des planches BD"
+            role: web interface (Node.js/Express + Google SSO)
+            description: "MonooBD — web interface (Node.js/Express, Google SSO) to ink and colour comic pages"
 
     steps:
       - name: Checkout
@@ -120,16 +120,16 @@ jobs:
           text = re.sub(r"(\]\()" + relative, lambda m: m.group(1) + absolute(m.group(2)), text)
           text = re.sub(r"(src=\")" + relative, lambda m: m.group(1) + absolute(m.group(2)), text)
           intro = (
-              f"> **`{env['IMAGE']}`** : {env['ROLE']} du projet MonooBD. "
-              f"Code source : [{context}]({repo}/tree/{ref}/{context}).\n\n"
+              f"> **`{env['IMAGE']}`** : {env['ROLE']} of the MonooBD project. "
+              f"Source code: [{context}]({repo}/tree/{ref}/{context}).\n\n"
           )
           text = intro + text + (
-              "\n\n---\n\n## Liens\n\n"
-              f"- Code source de cette image : [{context}]({repo}/tree/{ref}/{context})\n"
-              f"- Dockerfile : [{dockerfile}]({repo}/blob/{ref}/{dockerfile})\n"
-              f"- Déploiement (Compose) : [docker-compose.yml]({repo}/blob/{ref}/docker-compose.yml)\n"
-              f"- Projet complet : [{env['GITHUB_REPOSITORY']}]({repo})\n"
-              f"- Signaler un problème : [issues GitHub]({repo}/issues)\n"
+              "\n\n---\n\n## Links\n\n"
+              f"- Source code of this image: [{context}]({repo}/tree/{ref}/{context})\n"
+              f"- Dockerfile: [{dockerfile}]({repo}/blob/{ref}/{dockerfile})\n"
+              f"- Deployment (Compose): [docker-compose.yml]({repo}/blob/{ref}/docker-compose.yml)\n"
+              f"- Full project: [{env['GITHUB_REPOSITORY']}]({repo})\n"
+              f"- Report a problem: [GitHub issues]({repo}/issues)\n"
           )
           open(dst, "w", encoding="utf-8").write(text)
           PY
@@ -146,9 +146,9 @@ jobs:
 
       - name: Build summary
         run: |
-          echo "## ${{ matrix.name }} publié" >> $GITHUB_STEP_SUMMARY
+          echo "## ${{ matrix.name }} published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Tag | Commande |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | Command |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| latest | \`docker pull ${{ matrix.image }}:latest\` |" >> $GITHUB_STEP_SUMMARY
           echo "| build  | \`docker pull ${{ matrix.image }}:build-${{ github.run_number }}\` |" >> $GITHUB_STEP_SUMMARY

@@ -5,14 +5,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# NumPy 1.x requis : torch 2.1.2 et diffusers 0.27.2 sont incompatibles avec NumPy 2.x
-# Les dépendances pures-Python de torch/torchvision sont installées ici depuis PyPI :
-# l'index PyTorch ne les sert pas toujours en wheel (ex. typing_extensions 4.16 en sdist
-# seulement, dont le build exige flit_core, absent de cet index → échec du build).
+# NumPy 1.x required: torch 2.1.2 and diffusers 0.27.2 are incompatible with NumPy 2.x
+# The pure-Python dependencies of torch/torchvision are installed here from PyPI:
+# the PyTorch index does not always serve them as wheels (e.g. typing_extensions 4.16 as sdist
+# only, whose build needs flit_core, missing from that index → build failure).
 RUN pip install --no-cache-dir "numpy<2" \
         typing-extensions filelock sympy networkx jinja2 fsspec requests "pillow==10.2.0"
 
-# PyTorch CPU (couche indépendante — mise en cache si version inchangée)
+# PyTorch CPU (separate layer — cached while the version is unchanged)
 RUN pip install --no-cache-dir \
         torch==2.1.2 torchvision==0.16.2 \
         --index-url https://download.pytorch.org/whl/cpu
