@@ -4,40 +4,40 @@ version: "3.8"
 # STACK MonooBD — monoobd.${DOMAIN}
 # ============================================================
 #
-# Exposé publiquement :
-#   monoobd.${DOMAIN}   → Application web (upload + preview côte à côte)
+# Publicly exposed:
+#   monoobd.${DOMAIN}   → Web app (upload + side-by-side preview)
 #
-# Service interne :
-#   inference           → Microserveur HuggingFace Diffusers (port 8000, CPU)
+# Internal service:
+#   inference           → HuggingFace Diffusers microserver (port 8000, CPU)
 #
-# Volumes persistants sous /opt/ia/bd/ (survivent aux redémarrages) :
-#   models/     → cache HuggingFace (SD 1.5 + ControlNet, ~5 Go, téléchargés 1 fois)
-#   outputs/    → images générées (historique)
-#   sessions/   → sessions webapp (pas de re-login après redémarrage)
-#   projects/   → projets BD (JSON, appartient à l’utilisateur node)
-#   renders/    → images générées : original.png + result.png par rendu (archivage)
+# Persistent volumes under /opt/ia/bd/ (survive restarts):
+#   models/     → HuggingFace cache (SD 1.5 + ControlNet, ~5 GB, downloaded once)
+#   outputs/    → generated images (history)
+#   sessions/   → webapp sessions (no re-login after a restart)
+#   projects/   → comic projects (JSON, owned by the node user)
+#   renders/    → generated images: original.png + result.png per render (archive)
 #
-# Variables à configurer dans Coolify → Environment Variables :
+# Variables to set in Coolify → Environment Variables:
 #   DOMAIN               : monolithoid.com
-#   DOCKERHUB_USERNAME   : ton username Docker Hub
+#   DOCKERHUB_USERNAME   : your Docker Hub username
 #   OAUTH_CLIENT_ID      : Google Cloud Console → OAuth 2.0 → Client ID
-#   OAUTH_CLIENT_SECRET  : idem → Client Secret
+#   OAUTH_CLIENT_SECRET  : same → Client Secret
 #   SESSION_SECRET       : openssl rand -hex 32
-#   ALLOWED_EMAIL        : ton adresse Gmail autorisée
-#   OPENAI_API_KEY       : (optionnel) active le moteur ChatGPT / OpenAI
-#   NOVELAI_API_KEY      : (optionnel) active le moteur NovelAI (Persistent API Token)
-#   DEFAULT_BACKEND      : (optionnel) local | openai | novelai
+#   ALLOWED_EMAIL        : your allowed Gmail address
+#   OPENAI_API_KEY       : (optional) enables the ChatGPT / OpenAI engine
+#   NOVELAI_API_KEY      : (optional) enables the NovelAI engine (Persistent API Token)
+#   DEFAULT_BACKEND      : (optional) local | openai | novelai
 #
-# Avant de déployer :
+# Before deploying:
 #   sudo bash setup-vps.sh
 # ============================================================
 
 services:
 
   # ----------------------------------------------------------
-  # INFERENCE — microserveur Diffusers img2img + ControlNet
-  # CPU uniquement — générations lentes (10-30 min)
-  # Premier démarrage : télécharge ~5 Go de modèles depuis HuggingFace
+  # INFERENCE — Diffusers img2img + ControlNet microserver
+  # CPU only — slow generations (10-30 min)
+  # First start: downloads ~5 GB of models from HuggingFace
   # ----------------------------------------------------------
   inference:
     image: ${DOCKERHUB_USERNAME}/bd-inference:latest
@@ -57,9 +57,9 @@ services:
       - bd-network
 
   # ----------------------------------------------------------
-  # MONOOBD WEBAPP — interface upload + prévisualisation côte à côte
-  # Google SSO — accès réservé à ${ALLOWED_EMAIL}
-  # Exposé via Traefik sous monoobd.${DOMAIN}
+  # MONOOBD WEBAPP — upload interface + side-by-side preview
+  # Google SSO — access restricted to ${ALLOWED_EMAIL}
+  # Exposed through Traefik as monoobd.${DOMAIN}
   # ----------------------------------------------------------
   webapp:
     image: ${DOCKERHUB_USERNAME}/bd-webapp:latest
@@ -76,7 +76,7 @@ services:
       - SESSION_SECRET=${SESSION_SECRET}
       - ALLOWED_EMAIL=${ALLOWED_EMAIL}
       - DOMAIN=${DOMAIN}
-      # Moteurs IA par API (optionnels — un moteur n'apparaît que si sa clé est définie)
+      # API-based AI engines (optional — an engine only appears when its key is set)
       - DEFAULT_BACKEND=${DEFAULT_BACKEND:-local}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_IMAGE_MODEL=${OPENAI_IMAGE_MODEL:-gpt-image-1}

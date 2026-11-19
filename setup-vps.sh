@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# setup-vps.sh — Préparation du VPS pour MonooBD
+# setup-vps.sh — VPS preparation for MonooBD
 #
-# Ce script couvre ce que Coolify ne gère pas :
-#   - Arborescence des volumes host (/opt/ia/bd/)
-#   - Règles firewall UFW
+# This script covers what Coolify does not handle:
+#   - Host volume directory tree (/opt/ia/bd/)
+#   - UFW firewall rules
 #
-# Usage : sudo bash setup-vps.sh
-# Prérequis : Ubuntu 22.04+ avec accès root, Coolify déjà installé
+# Usage: sudo bash setup-vps.sh
+# Requirements: Ubuntu 22.04+ with root access, Coolify already installed
 
 set -euo pipefail
 
@@ -25,11 +25,11 @@ error()  { echo -e "${RED}[✗]${NC} $*" >&2; exit 1; }
 section(){ echo -e "\n${CYAN}══ $* ══${NC}"; }
 
 require_root() {
-    [[ $EUID -eq 0 ]] || error "Ce script doit être exécuté en root : sudo bash $0"
+    [[ $EUID -eq 0 ]] || error "This script must be run as root: sudo bash $0"
 }
 
 create_directories() {
-    section "Arborescence /opt/ia/bd"
+    section "Directory tree /opt/ia/bd"
 
     local dirs=(
         "${DATA_DIR}/models/Stable-diffusion"
@@ -44,17 +44,17 @@ create_directories() {
 
     for d in "${dirs[@]}"; do
         mkdir -p "$d"
-        log "Créé : $d"
+        log "Created: $d"
     done
 
     chmod -R 755 "${DATA_DIR}"
-    log "Permissions configurées."
+    log "Permissions set."
 
-    # Le conteneur webapp tourne en USER node (UID 1000).
+    # The webapp container runs as USER node (UID 1000).
     chown -R 1000:1000 "${DATA_DIR}/sessions"
     chown -R 1000:1000 "${DATA_DIR}/projects"
     chown -R 1000:1000 "${DATA_DIR}/renders"
-    log "Propriétaire de sessions, projects et renders → 1000:1000 (node)."
+    log "Owner of sessions, projects and renders → 1000:1000 (node)."
 }
 
 configure_firewall() {
@@ -66,10 +66,10 @@ configure_firewall() {
     ufw allow 22   comment "SSH"
     ufw allow 80   comment "HTTP (Traefik)"
     ufw allow 443  comment "HTTPS (Traefik)"
-    ufw deny  7860 comment "A1111 API (interne Docker uniquement)"
+    ufw deny  7860 comment "A1111 API (Docker internal only)"
 
     ufw --force enable
-    log "UFW activé."
+    log "UFW enabled."
     ufw status verbose
 }
 
@@ -78,7 +78,7 @@ main() {
 
     echo ""
     echo -e "${CYAN}╔══════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║   MonooBD — Préparation VPS               ║${NC}"
+    echo -e "${CYAN}║   MonooBD — VPS preparation               ║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════╝${NC}"
     echo ""
 
@@ -86,14 +86,14 @@ main() {
     configure_firewall
 
     echo ""
-    echo -e "${GREEN}Préparation VPS terminée.${NC}"
+    echo -e "${GREEN}VPS preparation complete.${NC}"
     echo ""
-    echo -e "${CYAN}Prochaines étapes :${NC}"
-    echo "  1. Dans Coolify : New Resource → Docker Compose → ce dépôt"
-    echo "  2. Configurer les variables d'environnement (voir README § Variables)"
-    echo "  3. Cliquer Deploy"
+    echo -e "${CYAN}Next steps:${NC}"
+    echo "  1. In Coolify: New Resource → Docker Compose → this repository"
+    echo "  2. Set the environment variables (see README § Variables)"
+    echo "  3. Click Deploy"
     echo ""
-    echo -e "${YELLOW}Note :${NC} Premier démarrage = téléchargement de ~5 Go de modèles."
+    echo -e "${YELLOW}Note:${NC} First start = download of ~5 GB of models."
     echo ""
 }
 

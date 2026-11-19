@@ -1,19 +1,19 @@
 'use strict';
 
 // ============================================================
-// Backends de génération d'image — sélectionnables
+// Image generation backends — selectable
 // ============================================================
 //
-//   local    → microserveur inference (SD 1.5 + ControlNet, CPU)
+//   local    → inference microserver (SD 1.5 + ControlNet, CPU)
 //   openai   → OpenAI Images API (endpoint /v1/images/edits)
 //   novelai  → NovelAI Image API (img2img)
 //
-// Chaque backend expose la même interface :
+// Every backend exposes the same interface:
 //   generate({ image, prompt, negativePrompt, mode, strength }) → base64 PNG
 //
-// Un backend n'est « configuré » que si ses variables d'environnement
-// sont présentes (clé API). Le backend par défaut est DEFAULT_BACKEND
-// (ou le premier configuré).
+// A backend is only "configured" when its environment variables
+// are present (API key). The default backend is DEFAULT_BACKEND
+// (or the first configured one).
 // ============================================================
 
 const zlib  = require('zlib');
@@ -41,9 +41,9 @@ async function httpError(name, r) {
   return new Error(`${name} ${r.status}: ${body}`);
 }
 
-/** Extrait le premier fichier d'une archive ZIP (format renvoyé par NovelAI). */
+/** Extracts the first file of a ZIP archive (the format NovelAI returns). */
 function firstFileFromZip(buf) {
-  // End Of Central Directory : signature 0x06054b50, cherchée depuis la fin
+  // End Of Central Directory: signature 0x06054b50, searched from the end
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) {
     if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
@@ -63,7 +63,7 @@ function firstFileFromZip(buf) {
   throw new Error(`NovelAI : compression ZIP non supportée (${method})`);
 }
 
-// ── Backend : local (inference SD 1.5 + ControlNet) ─────────────────────────
+// ── Backend: local (inference SD 1.5 + ControlNet) ─────────────────────────
 
 const local = {
   id:    'local',
@@ -95,7 +95,7 @@ const local = {
   },
 };
 
-// ── Backend : OpenAI (ChatGPT / gpt-image) ──────────────────────────────────
+// ── Backend: OpenAI (ChatGPT / gpt-image) ──────────────────────────────────
 
 function openaiSize(width, height) {
   const ratio = width / height;
@@ -114,7 +114,7 @@ const openai = {
     const buf  = Buffer.from(image, 'base64');
     const meta = await sharp(buf).metadata();
 
-    // L'API Images n'a pas de negative prompt : on le formule en consigne.
+    // The Images API has no negative prompt: we phrase it as an instruction.
     const instruction = mode === 'encrage'
       ? 'Redraw this pencil sketch as clean final ink line art, keeping the exact same composition, poses and framing.'
       : 'Color this comic drawing, keeping the exact same composition, line art, poses and framing.';
@@ -147,9 +147,9 @@ const openai = {
   },
 };
 
-// ── Backend : NovelAI ───────────────────────────────────────────────────────
+// ── Backend: NovelAI ───────────────────────────────────────────────────────
 
-/** Dimensions multiples de 64, surface ≤ 1024×1024 (gratuit en abonnement Opus). */
+/** Dimensions in multiples of 64, area ≤ 1024×1024 (free with the Opus subscription). */
 function novelaiDims(width, height) {
   const maxArea = 1024 * 1024;
   const scale   = Math.sqrt(maxArea / (width * height));
@@ -173,7 +173,7 @@ const novelai = {
     const isV4  = /diffusion-4/.test(NOVELAI_MODEL);
     const is45  = /diffusion-4-5/.test(NOVELAI_MODEL);
     const seed  = Math.floor(Math.random() * 4294967295);
-    // Paramètres alignés sur ceux envoyés par novelai.net (params_version 3)
+    // Parameters matching those sent by novelai.net (params_version 3)
     const parameters = {
       params_version:   3,
       width,
@@ -205,7 +205,7 @@ const novelai = {
       reference_information_extracted_multiple: [],
       reference_strength_multiple:             [],
       normalize_reference_strength_multiple:   true,
-      // reference image (guide la génération sans img2img)
+      // reference image (guides generation without img2img)
       reference_image_multiple:                [resized],
       reference_information_extracted_multiple: [1.0],
       reference_strength_multiple:             [0.6],
@@ -240,11 +240,11 @@ const novelai = {
   },
 };
 
-// ── Registre ────────────────────────────────────────────────────────────────
+// ── Registry ────────────────────────────────────────────────────────────────
 
 const BACKENDS = { local, openai, novelai };
 
-// LOCAL_ENABLED=false permet de masquer le backend local (ex. VPS sans inference)
+// LOCAL_ENABLED=false hides the local backend (e.g. a VPS without inference)
 const LOCAL_ENABLED = (process.env.LOCAL_ENABLED || 'true').toLowerCase() !== 'false';
 
 function available() {

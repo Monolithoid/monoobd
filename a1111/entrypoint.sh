@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Entrypoint A1111 — télécharge les modèles manquants puis lance le serveur
+# A1111 entrypoint — downloads missing models, then starts the server
 set -euo pipefail
 
 MODELS_DIR=/app/stable-diffusion-webui/models
@@ -9,37 +9,37 @@ CN_DIR="${MODELS_DIR}/ControlNet"
 download_if_missing() {
     local dest="$1" url="$2" label="$3" size="${4:-}"
     if [ -f "$dest" ]; then
-        echo "[setup] Déjà présent : ${label}"
+        echo "[setup] Already present: ${label}"
         return
     fi
     mkdir -p "$(dirname "$dest")"
-    echo "[setup] Téléchargement : ${label}${size:+ (~${size} Mo)}…"
+    echo "[setup] Downloading: ${label}${size:+ (~${size} MB)}…"
     wget -q --show-progress -O "${dest}.tmp" "$url"
     mv "${dest}.tmp" "$dest"
-    echo "[setup] OK : ${label}"
+    echo "[setup] OK: ${label}"
 }
 
-echo "[setup] Vérification des modèles…"
+echo "[setup] Checking models…"
 
-# Modèle Stable Diffusion 1.5 (base)
+# Stable Diffusion 1.5 model (base)
 download_if_missing \
     "${SD_DIR}/v1-5-pruned-emaonly.safetensors" \
     "https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.safetensors" \
     "SD 1.5 (base model)" "3976"
 
-# ControlNet Scribble — encrage à partir d'un croquis
+# ControlNet Scribble — inking from a sketch
 download_if_missing \
     "${CN_DIR}/control_v11p_sd15_scribble.pth" \
     "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11p_sd15_scribble.pth" \
     "ControlNet Scribble" "1445"
 
-# ControlNet Lineart — guidage pour la colorisation
+# ControlNet Lineart — guidance for colouring
 download_if_missing \
     "${CN_DIR}/control_v11p_sd15_lineart.pth" \
     "https://huggingface.co/lllyasviel/ControlNet-v1-1/resolve/main/control_v11p_sd15_lineart.pth" \
     "ControlNet Lineart" "1445"
 
-echo "[setup] Modèles OK. Démarrage d'AUTOMATIC1111 (mode CPU)…"
+echo "[setup] Models OK. Starting AUTOMATIC1111 (CPU mode)…"
 
 exec python launch.py \
     --api \
